@@ -14,7 +14,7 @@ import kotlin.collections.ArrayList
 
 class MainActivity : AppCompatActivity() {
 
-    private final val REQUEST_ID_MULTIPLE_PERMISSIONS = 23
+    private final val READ_SMS_REQUEST = 23
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.READ_SMS),
-                REQUEST_ID_MULTIPLE_PERMISSIONS
+                READ_SMS_REQUEST
             )
             return false
         }
