@@ -1,31 +1,61 @@
 package com.sagar.aspiretestapp
 
 import android.Manifest
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import android.provider.Telephony
+import android.text.method.ScrollingMovementMethod
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.sagar.aspiretestapp.databinding.ActivityMainBinding
+import com.sagar.aspiretestapp.other.Constants.LAST_DAYS_TO_FETCH_MESSAGE
+import com.sagar.aspiretestapp.other.Constants.RECENT_TIME
+import com.sagar.aspiretestapp.other.Constants.SETTINGS
 import com.sagar.aspiretestapp.other.toast
+import com.sagar.aspiretestapp.response.Message
 import java.util.*
 import kotlin.collections.ArrayList
 
 class MainActivity : AppCompatActivity() {
 
-    private final val READ_SMS_REQUEST = 23
+    private val messageRequest = 23
+    private lateinit var sharedPref: SharedPreferences
+    private lateinit var editor: SharedPreferences.Editor
+    private lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        sharedPref = getSharedPreferences(SETTINGS, Context.MODE_PRIVATE)
+
+        binding.tvText.movementMethod = ScrollingMovementMethod()
 
         if (checkAndRequestPermissions()) {
+            readMessages()
             toast("We have permission")
-            val list = getSMS()
-            Log.d("Count", "Message Count: ${list.size}")
         } else {
             toast("We dont have Permission to read messages")
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == messageRequest && grantResults.isNotEmpty()) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                readMessages()
+            } else {
+                toast("Need Read Permission to work!")
+            }
         }
     }
 
@@ -35,39 +65,62 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.READ_SMS),
-                READ_SMS_REQUEST
+                messageRequest
             )
             return false
         }
         return true
     }
 
-    private fun getSMS(): List<String> {
-        val sms: MutableList<String> = ArrayList()
-        val uriSmsUri: Uri = Uri.parse("content://sms/inbox")
+    private fun displayData(list: List<Message>) {
+        var result = ""
+        result += "${list.size} \n"
 
-        val date = Date(System.currentTimeMillis() - 93L * 24 * 3600 * 1000).time
-        val cursor =
-            contentResolver.query(uriSmsUri, null, "date" + ">?", arrayOf("" + date), "date DESC")
-
-        while (cursor != null && cursor.moveToNext()) {
-            val address: String = cursor.getString(cursor.getColumnIndex("address"))
-            val body: String = cursor.getString(cursor.getColumnIndexOrThrow("body"))
-            val formattedDate =
-                millisToDate(cursor.getString(cursor.getColumnIndexOrThrow("date")).toLong())
-            sms.add("Number: $address .Message: $body Date $formattedDate")
+        for (value in list) {
+            result += "$value \n"
         }
 
-//        val cur: Cursor? = contentResolver.query(uriSmsUri, null, null, null, null)
-//        while (cur != null && cur.moveToNext()) {
-//            val address: String = cur.getString(cur.getColumnIndex("address"))
-//            val body: String = cur.getString(cur.getColumnIndexOrThrow("body"))
-//            val formattedDate = millisToDate(cur.getString(cur.getColumnIndexOrThrow("date")).toLong())
-//            sms.add("Number: $address .Message: $body")
-//        }
-//        cur?.close()
+        binding.tvText.text = result
+    }
+
+    private fun readMessages() {
+        val messageList: MutableList<Message> = ArrayList()
+        val uriSmsUri: Uri = Uri.parse("content://sms/inbox")
+        var recentDay = sharedPref.getLong(RECENT_TIME, -1L)
+        if (recentDay < 0) {
+            recentDay =
+                Date(System.currentTimeMillis() - LAST_DAYS_TO_FETCH_MESSAGE * 24 * 3600 * 1000).time
+        }
+
+        val cursor =
+            contentResolver.query(
+                uriSmsUri,
+                null,
+                "date" + ">?",
+                arrayOf("" + recentDay),
+                "date DESC"
+            )
+
+        while (cursor != null && cursor.moveToNext()) {
+            val address: String = cursor.getString(cursor.getColumnIndex(Telephony.Sms.ADDRESS))
+            val body: String = cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.BODY))
+            val formattedDate =
+                cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)).toLong()
+            messageList.add(Message(address, body, formattedDate))
+        }
         cursor?.close()
-        return sms
+
+        if (messageList.isNotEmpty()) {
+            updateRecentMessage(messageList[0].date)
+        }
+
+        displayData(messageList)
+    }
+
+    private fun updateRecentMessage(time: Long) {
+        editor = sharedPref.edit()
+        editor.putLong(RECENT_TIME, time)
+        editor.apply()
     }
 
     private fun millisToDate(currentTime: Long): String {
